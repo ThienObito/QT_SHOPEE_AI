@@ -59,13 +59,13 @@ class ShopeeSearch:
                                 products.append({
                                     "name": name[:120],
                                     "price": price,
-                                    "original_price": price * (1 + 0.1),  # estimate original
+                                    "original_price": price * (1 + 0.1),
                                     "discount_percent": 10,
                                     "rating": 4.5,
                                     "sold": "1k+",
                                     "shop": "Shopee",
                                     "shop_type": "Thường",
-                                    "url": url if "shopee.vn" in url else f"https://shopee.vn/search?keyword={query}",
+                                    "url": url if ("shopee.vn" in url and ("/product/" in url or "/i." in url)) else self._shopee_search_url(name),
                                     "vouchers": ["Freeship", "Giảm thêm"],
                                     "image": "",
                                 })
@@ -140,7 +140,7 @@ class ShopeeSearch:
                         "sold": "500+",
                         "shop": "Shopee Mall",
                         "shop_type": "Mall",
-                        "url": f"https://shopee.vn/search?keyword={query}",
+                        "url": self._shopee_search_url(name),
                         "vouchers": ["Giảm thêm 5%"],
                     })
 
@@ -153,6 +153,16 @@ class ShopeeSearch:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def _shopee_search_url(self, product_name: str) -> str:
+        """Tạo link Shopee search chính xác với tên sản phẩm"""
+        from urllib.parse import quote
+        # Clean and encode product name
+        name = product_name.strip()
+        # Remove " - ..." suffix for cleaner search
+        name = re.sub(r'\s*[-–|]\s*(Chính hãng|Hàng|Bảo hành|Giá Sốc|Like New|Secondhand).*', '', name)
+        encoded = quote(name)
+        return f"https://shopee.vn/search?keyword={encoded}&sortBy=sales"
+
     def _demo_products(self, query: str) -> list:
         """Demo products with realistic prices based on query"""
         import hashlib
@@ -163,23 +173,23 @@ class ShopeeSearch:
         products = [
             {"name": f"{query} - Chính hãng, Nguyên Seal", "price": base_price, "original_price": round(base_price * 1.25),
              "discount_percent": 20, "rating": 4.8, "sold": "10k+", "shop": "Shopee Mall",
-             "shop_type": "Mall", "url": f"https://shopee.vn/search?keyword={query}",
+             "shop_type": "Mall", "url": self._shopee_search_url(f"{query} chính hãng"),
              "vouchers": ["Giảm 200k", "Freeship", "Trả góp 0%"]},
             {"name": f"{query} - Hàng Like New 99%", "price": round(base_price * 0.85), "original_price": base_price,
              "discount_percent": 15, "rating": 4.6, "sold": "5k+", "shop": "Hoàng Hà Mobile",
-             "shop_type": "Yêu Thích", "url": f"https://shopee.vn/search?keyword={query}",
+             "shop_type": "Yêu Thích", "url": self._shopee_search_url(f"{query} like new"),
              "vouchers": ["Giảm 100k", "Freeship"]},
             {"name": f"{query} - Bảo hành 12 tháng, Trả góp", "price": round(base_price * 0.92), "original_price": round(base_price * 1.15),
              "discount_percent": 20, "rating": 4.7, "sold": "8k+", "shop": "Thế Giới Di Động",
-             "shop_type": "Mall", "url": f"https://shopee.vn/search?keyword={query}",
+             "shop_type": "Mall", "url": self._shopee_search_url(f"{query} bảo hành"),
              "vouchers": ["Giảm 150k", "Trả góp 0%"]},
             {"name": f"{query} - Giá Sốc - Flash Sale", "price": round(base_price * 0.75), "original_price": base_price,
              "discount_percent": 25, "rating": 4.4, "sold": "2k+", "shop": "CellphoneS Official",
-             "shop_type": "Yêu Thích", "url": f"https://shopee.vn/search?keyword={query}",
+             "shop_type": "Yêu Thích", "url": self._shopee_search_url(f"{query} flash sale"),
              "vouchers": ["Giảm 300k", "Freeship"]},
             {"name": f"{query} - Hàng secondhand đẹp", "price": round(base_price * 0.6), "original_price": base_price,
              "discount_percent": 40, "rating": 4.3, "sold": "1k+", "shop": "Shop Đã Dùng",
-             "shop_type": "Thường", "url": f"https://shopee.vn/search?keyword={query}",
+             "shop_type": "Thường", "url": self._shopee_search_url(f"{query} secondhand"),
              "vouchers": ["Giảm 50k"]},
         ]
         return products
