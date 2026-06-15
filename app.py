@@ -12,6 +12,10 @@ from models import db, User, Chat, Message, Coupon, Deal, SearchHistory, Favorit
 from services.ai_service import ai_service
 from services.coupon_service import coupon_service
 from services.search_service import search_service
+from services.deal_score import rank_products, calc_deal_score
+from services.shopee_search import ShopeeSearch
+
+shopee_search = ShopeeSearch()
 
 load_dotenv()
 
@@ -288,6 +292,24 @@ def search():
         "suggestions": fuzzy_results,
         "price_range": price_range
     })
+
+
+@app.route('/api/shop-search', methods=['POST'])
+def shop_search():
+    """Tìm sản phẩm thật từ Shopee qua web scraping"""
+    data = request.get_json()
+    query = data.get('query', '').strip()
+    if not query:
+        return jsonify({"success": False, "error": "Vui lòng nhập sản phẩm"})
+
+    result = shopee_search.search_products(query)
+
+    if result.get("success") and result.get("products"):
+        # Calculate deal scores
+        ranked = rank_products(result["products"])
+        return jsonify({"success": True, "products": ranked, "total": len(ranked)})
+
+    return jsonify(result)
 
 
 @app.route('/api/chats', methods=['GET'])

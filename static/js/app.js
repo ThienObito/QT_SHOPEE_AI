@@ -54,19 +54,14 @@ const App = {
 
   /* ═══ VIEWS ═══ */
   showView(name) {
-    // Hide all views
-    ['home', 'chat', 'vouchers', 'settings'].forEach(v => {
-      const el = v === 'home' ? document.getElementById('view-home')
-        : v === 'chat' ? document.getElementById('view-chat')
-        : v === 'vouchers' ? document.getElementById('view-vouchers')
-        : document.getElementById('view-settings');
-      if (el) {
-        if (v === 'home') el.style.display = v === name ? '' : 'none';
-        else el.classList.toggle('active', v === name);
-      }
+    // Hide all views (use display:none)
+    ['view-home', 'view-chat', 'view-vouchers', 'view-settings'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = id === `view-${name}` ? '' : 'none';
     });
     // Results view
-    document.getElementById('view-results').classList.remove('active');
+    const rv = document.getElementById('view-results');
+    if (rv) rv.style.display = 'none';
 
     this.state.view = name;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -91,31 +86,95 @@ const App = {
 
     document.getElementById('view-home').style.display = 'none';
     const rv = document.getElementById('view-results');
-    rv.classList.add('active');
+    rv.style.display = '';
     document.getElementById('results-query').textContent = `🔍 ${query}`;
-    document.getElementById('results-meta').textContent = 'Đang tìm kiếm...';
+    document.getElementById('results-meta').textContent = '🔎 Đang tìm sản phẩm thật từ Shopee...';
     document.getElementById('search-result-ai').innerHTML = '<div class="typing-dots"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>';
 
     try {
-      const res = await fetch('/api/chat', {
+      // Step 1: Search Shopee for real products
+      const res = await fetch('/api/shop-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: `Tìm deal tốt nhất cho sản phẩm: ${query}. Phân tích giá thị trường, tìm voucher, mã giảm giá, freeship, flash sale. Tính giá cuối cùng sau tất cả ưu đãi. Trình bày dạng bảng so sánh.` })
+        body: JSON.stringify({ query })
       });
       const data = await res.json();
 
-      document.getElementById('results-meta').textContent = '✨ AI đã phân tích xong';
-      if (data.success) {
-        const html = marked.parse(data.answer);
+      if (data.success && data.products && data.products.length > 0) {
+        const products = data.products.filter(p => !p.filtered);
+        document.getElementById('results-meta').textContent =
+          `🏆 Tìm thấy ${products.length} sản phẩm từ Shopee | AI Deal Score`;
+
+        // Render product cards
+        document.getElementById('search-result-ai').innerHTML =
+          '<div class="product-grid" id="product-grid"></div>';
+
+        const grid = document.getElementById('product-grid');
+        products.forEach((p, i) => {
+          const score = p.deal_score || 0;
+          const isHot = score >= 70;
+          const grid = document.getElementById('product-grid');
+          const card = document.createElement('div');
+          card.className = 'product-card';
+          card.innerHTML = `
+            ${isHot ? '<div class="product-card-badge">🔥 TOP DEAL</div>' : ''}
+            <div class="product-card-img">📱</div>
+            <div class="product-card-name">${this.esc(p.name)}</div>
+            <div class="product-card-shop">
+              ${this.esc(p.shop || '')}
+              ${p.shop_type ? `<span style="margin-left:6px;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:${p.shop_type==='Mall'?'var(--orange-400)':'var(--bg-muted)'};color:${p.shop_type==='Mall'?'white':'var(--text-secondary)'}">${p.shop_type}</span>` : ''}
+            </div>
+            <div class="product-card-price-row">
+              <span class="product-card-price">${Number(p.price).toLocaleString()}₫</span>
+              ${p.original_price && p.original_price > p.price ? `<span class="product-card-price-original">${Number(p.original_price).toLocaleString()}₫</span>` : ''}
+              ${p.discount_percent ? `<span class="product-card-discount">-${p.discount_percent}%</span>` : ''}
+            </div>
+            ${p.vouchers && p.vouchers.length ? `<div class="product-card-voucher">🎫 ${p.vouchers.slice(0,2).join(' • ')}</div>` : ''}
+            <div class="product-card-savings">
+              ⭐ ${p.rating || '?'} ★ | Đã bán ${p.sold || 0}
+              ${p.final_price && p.final_price < p.price ? `<span style="margin-left:auto;color:var(--primary)">💰 ${Number(p.price - p.final_price).toLocaleString()}₫</span>` : ''}
+            </div>
+            <div style="margin-top:10px;display:flex;gap:8px;">
+              <div style="flex:1;height:4px;background:var(--bg-muted);border-radius:2px;overflow:hidden;">
+                <div style="width:${Math.min(score,100)}%;height:100%;background:${score >= 70 ? 'linear-gradient(90deg,#16a34a,#22c55e)' : score >= 50 ? 'linear-gradient(90deg,#f97316,#fb923c)' : 'linear-gradient(90deg,#ef4444,#f87171)'};border-radius:2px;"></div>
+              </div>
+              <span style="font-size:11px;font-weight:600;color:${score >= 70 ? '#16a34a' : score >= 50 ? '#f97316' : '#ef4444'}">Deal ${score}</span>
+            </div>
+            ${p.url ? `<a href="${this.esc(p.url)}" target="_blank" style="display:block;text-align:center;margin-top:10px;padding:8px;background:var(--orange-500);color:white;border-radius:var(--radius-sm);font-weight:600;font-size:13px;">🔗 Mua ngay trên Shopee</a>` : ''}
+          `;
+          if (grid) grid.appendChild(card);
+        });
+
+        // Step 2: AI analysis (optional, runs in parallel)
+        fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: `Phân tích các sản phẩm sau từ Shopee cho "${query}". Đưa ra lời khuyên mua hàng, so sánh giá, đề xuất voucher phù hợp. Trả lời ngắn gọn bằng tiếng Việt.\n\nSản phẩm:\n${products.map((p,i) => `${i+1}. ${p.name} - ${Number(p.price).toLocaleString()}₫ (giảm ${p.discount_percent||0}%) - Shop: ${p.shop||'?'} - Sao: ${p.rating||'?'}`).join('\n')}` })
+        }).then(r => r.json()).then(d => {
+          if (d.success) {
+            const analysisDiv = document.createElement('div');
+            analysisDiv.className = 'search-result-ai';
+            analysisDiv.style.marginTop = '24px';
+            analysisDiv.innerHTML = `<div class="result-content"><div style="font-weight:600;margin-bottom:8px;">🤖 Phân tích của AI:</div>${marked.parse(d.answer)}</div>`;
+            document.getElementById('view-results').appendChild(analysisDiv);
+            analysisDiv.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+          }
+        }).catch(() => {});
+
+      } else if (data.success && data.products) {
+        // Fallback: show raw
+        document.getElementById('results-meta').textContent = '📦 Kết quả tìm kiếm';
+        const html = marked.parse(data.products[0]?.raw || 'Không tìm thấy sản phẩm phù hợp.');
         document.getElementById('search-result-ai').innerHTML = `<div class="result-content">${html}</div>`;
-        // Highlight code
-        document.querySelectorAll('#search-result-ai pre code').forEach(b => hljs.highlightElement(b));
       } else {
-        document.getElementById('search-result-ai').innerHTML = `<div class="result-content" style="color:var(--text-tertiary)">${data.error}</div>`;
+        document.getElementById('results-meta').textContent = '❌ Không tìm thấy';
+        document.getElementById('search-result-ai').innerHTML =
+          `<div class="result-content" style="color:var(--text-tertiary)">${data.error || 'Không tìm thấy sản phẩm. Vui lòng thử từ khóa khác.'}</div>`;
       }
     } catch(err) {
       document.getElementById('results-meta').textContent = '❌ Lỗi kết nối';
-      document.getElementById('search-result-ai').innerHTML = '<div class="result-content" style="color:#ef4444;">Lỗi kết nối đến server. Vui lòng thử lại.</div>';
+      document.getElementById('search-result-ai').innerHTML =
+        '<div class="result-content" style="color:#ef4444;">Lỗi kết nối đến server. Vui lòng thử lại.</div>';
     }
 
     document.getElementById('search-input').blur();

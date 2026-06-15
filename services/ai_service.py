@@ -7,6 +7,7 @@ import json
 import re
 from datetime import datetime
 from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -227,6 +228,81 @@ Hãy tính:
             return "TikTok Shop"
         else:
             return "Khác"
+
+    def shop_search(self, query: str) -> dict:
+        """Tìm sản phẩm thật từ Shopee bằng Google Search Grounding.
+        Trả về JSON: {products: [{name, price, original_price, discount, rating, sales, shop, link, image}]}
+        """
+        try:
+            prompt = f"""Bạn là chuyên gia tìm kiếm sản phẩm trên Shopee Việt Nam.
+
+Tìm sản phẩm THẬT trên Shopee.vn cho: "{query}"
+
+YÊU CẦU:
+1. Chỉ tìm trên Shopee.vn (không lazada, tiki)
+2. Sản phẩm phải có giá thật, link thật
+3. Ưu tiên: Shopee Mall, Yêu Thích+, shop 4.5+ sao
+4. Lấy thông tin CHI TIẾT: tên, giá, giảm giá, đánh giá, đã bán
+
+Trả về JSON CHÍNH XÁC (tối đa 5 sản phẩm):
+{{
+  "products": [
+    {{
+      "name": "Tên sản phẩm đầy đủ",
+      "price": 12345000,
+      "original_price": 15000000,
+      "discount_percent": 18,
+      "rating": 4.8,
+      "sold": "5.2k",
+      "shop": "Tên Shop",
+      "shop_type": "Mall" hoặc "Yêu Thích" hoặc "Thường",
+      "url": "https://shopee.vn/...",
+      "image": "https://...",
+      "vouchers": ["Mã giảm 50k", "Freeship"]
+    }}
+  ]
+}}
+
+QUAN TRỌNG:
+- Chỉ lấy sản phẩm CÓ THẬT trên Shopee
+- KHÔNG bịa sản phẩm
+- Giá phải chính xác
+- Link phải là link Shopee thật
+- Nếu không tìm thấy, trả về products: []"""
+
+            google_search_tool = types.Tool(
+                google_search=types.GoogleSearch()
+            )
+
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=[{"role": "user", "parts": [{"text": prompt}]}],
+                config={
+                    "temperature": 0.1,
+                    "max_output_tokens": 4096,
+                    "tools": [google_search_tool],
+                }
+            )
+
+            text = response.text
+            # Extract JSON from response
+            json_match = re.search(r'\{.*"products".*\}', text, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+                return {"success": True, "products": data.get("products", [])}
+
+            # Fallback: try to parse whole response as JSON
+            try:
+                data = json.loads(text)
+                return {"success": True, "products": data.get("products", [])}
+            except:
+                return {
+                    "success": True,
+                    "products": [{"name": "Kết quả tìm kiếm", "raw": text[:500]}]
+                }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
 
 # Singleton instance

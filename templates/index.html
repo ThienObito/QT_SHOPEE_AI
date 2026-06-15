@@ -61,7 +61,7 @@
 
       <div class="sidebar-footer">
         <button class="theme-btn" id="theme-toggle" title="Đổi theme">
-          <svg class="theme-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg class="theme-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
           <svg class="theme-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
         <span class="sidebar-ver">v2.0</span>
@@ -71,20 +71,18 @@
     <!-- ═══ MAIN ═══ -->
     <main class="main-content">
 
-      <!-- ═══ HOME VIEW ═══ -->
-      <div class="main-scroll" id="view-home">
+      <!-- ═══ HOME VIEW ═══ (scrollable wrapper) ═══ -->
+      <div class="view-scroll" id="view-home">
         <section class="hero-section">
           <div class="hero-badge">
             <span class="hero-badge-dot"></span>
             AI Shopping Assistant — Miễn phí
           </div>
-
           <h1 class="hero-title">Tìm Mã Giảm Giá<br>Với AI Thông Minh</h1>
           <p class="hero-sub">
             AI tự động tìm <strong>voucher</strong>, <strong>mã giảm giá</strong> và <strong>giá tốt nhất</strong><br>
             từ Shopee, Lazada, TikTok Shop
           </p>
-
           <div class="search-section">
             <form class="search-bar" id="search-form" autocomplete="off">
               <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -94,7 +92,6 @@
                 Tìm Deal
               </button>
             </form>
-
             <div class="trending">
               <span class="trending-label">🔥 Phổ biến:</span>
               <button class="trend-chip" data-query="iPhone 15 Pro Max">iPhone 15</button>
@@ -106,7 +103,6 @@
           </div>
         </section>
 
-        <!-- Deal Hot Section -->
         <section class="deal-section" id="deal-section">
           <div class="section-header">
             <h2 class="section-title">🔥 Deal Hot Hôm Nay</h2>
@@ -156,7 +152,7 @@
       </div>
 
       <!-- ═══ RESULTS VIEW ═══ -->
-      <div class="results-view" id="view-results">
+      <div class="view-scroll" id="view-results" style="display:none">
         <div class="results-header">
           <div class="results-query" id="results-query"></div>
           <div class="results-meta" id="results-meta"></div>
@@ -165,7 +161,7 @@
       </div>
 
       <!-- ═══ CHAT VIEW ═══ -->
-      <div class="chat-view" id="view-chat">
+      <div class="view-chat" id="view-chat" style="display:none">
         <div class="chat-messages" id="chat-messages">
           <div class="chat-messages-inner" id="chat-msgs-inner">
             <div style="text-align:center;padding:60px 20px;color:var(--text-tertiary);font-size:14px;">
@@ -176,7 +172,6 @@
             </div>
           </div>
         </div>
-
         <div class="chat-input-area">
           <div class="chat-input-inner">
             <form class="chat-input-box" id="chat-form">
@@ -191,11 +186,10 @@
       </div>
 
       <!-- ═══ VOUCHER VIEW ═══ -->
-      <div class="main-scroll">
-        <div class="voucher-view" id="view-vouchers">
+      <div class="view-scroll" id="view-vouchers" style="display:none">
+        <div class="voucher-inner">
           <h2 style="font-size:22px;font-weight:650;margin-bottom:4px;">🎟 Voucher Center</h2>
           <p style="font-size:14px;color:var(--text-tertiary);margin-bottom:20px;">Mã giảm giá mới nhất từ các sàn thương mại điện tử</p>
-
           <div class="voucher-tabs" id="voucher-tabs">
             <button class="voucher-tab active" data-platform="all">📋 Tất cả</button>
             <button class="voucher-tab" data-platform="shopee">🛒 Shopee</button>
@@ -203,7 +197,6 @@
             <button class="voucher-tab" data-platform="tiktok">🎵 TikTok Shop</button>
             <button class="voucher-tab" data-platform="tiki">🔵 Tiki</button>
           </div>
-
           <div id="voucher-list" class="voucher-list">
             <div style="text-align:center;padding:40px;color:var(--text-tertiary);">
               <div style="font-size:32px;margin-bottom:8px;">🎫</div>
@@ -214,11 +207,10 @@
       </div>
 
       <!-- ═══ SETTINGS VIEW ═══ -->
-      <div class="main-scroll">
-        <div class="voucher-view" id="view-settings">
+      <div class="view-scroll" id="view-settings" style="display:none">
+        <div class="voucher-inner">
           <h2 style="font-size:22px;font-weight:650;margin-bottom:4px;">⚙️ Cài đặt</h2>
           <p style="font-size:14px;color:var(--text-tertiary);margin-bottom:24px;">Tùy chỉnh trải nghiệm QTDEAL.AI</p>
-
           <div style="background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:20px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
               <div>
@@ -231,13 +223,11 @@
                 <span id="dark-toggle-knob" style="position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:white;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
               </label>
             </div>
-
             <div style="padding-top:16px;border-top:1px solid var(--border-subtle);">
               <div style="font-weight:600;margin-bottom:8px;">ℹ️ Về QTDEAL.AI</div>
               <div style="font-size:13px;color:var(--text-tertiary);line-height:1.6;">
                 <strong>Phiên bản:</strong> 2.0<br>
                 <strong>Công nghệ:</strong> Google Gemini AI + Flask<br>
-                <strong>Mục tiêu:</strong> Trở thành nền tảng tìm deal & voucher số 1 Việt Nam<br>
                 <strong>Hỗ trợ:</strong> Shopee • Lazada • TikTok Shop • Tiki
               </div>
             </div>
