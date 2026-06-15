@@ -82,3 +82,17 @@ class SearchHistory(db.Model):
     query = db.Column(db.String(300), nullable=False)
     results_summary = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Favorite(db.Model):
+    __tablename__ = 'favorites'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    product_name = db.Column(db.String(300), nullable=False)
+    product_url = db.Column(db.Text, nullable=True)
+    image_url = db.Column(db.Text, nullable=True)
+    price = db.Column(db.Float, nullable=True)
+    platform = db.Column(db.String(50), nullable=True)
+    note = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))

@@ -1,616 +1,446 @@
-/* ─── QT_SHOPEE AI ─── Frontend Application ─── */
+/* ═══════════════════════════════════════════════
+   QTDEAL.AI — Frontend Application v2.0
+   ═══════════════════════════════════════════════ */
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  highlight: (code, lang) => {
+    if (lang && hljs.getLanguage(lang)) {
+      try { return hljs.highlight(code, { language: lang }).value; }
+      catch (e) { /* fall through */ }
+    }
+    try { return hljs.highlightAuto(code).value; }
+    catch (e) { return code; }
+  }
+});
 
 const App = {
   state: {
+    view: 'home',
+    theme: localStorage.getItem('qtdeat-theme') || 'light',
     currentChatId: null,
     isStreaming: false,
     chats: [],
     coupons: [],
-    theme: localStorage.getItem('theme') || 'light',
     sidebarOpen: false,
   },
 
+  /* ═══ INIT ═══ */
   init() {
-    this.loadTheme();
+    this.applyTheme();
     this.loadChats();
-    this.setupEventListeners();
-    this.setupAutoResize();
-
-    if (this.state.theme === 'dark') {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    }
+    this.loadCoupons();
+    this.bindEvents();
+    this.autoResize();
   },
 
-  /* ─── THEME ─── */
-  loadTheme() {
-    const saved = localStorage.getItem('theme');
-    if (saved === 'dark') {
+  /* ═══ THEME ═══ */
+  applyTheme() {
+    if (this.state.theme === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark');
-      this.state.theme = 'dark';
+      document.querySelector('.theme-sun').style.display = 'none';
+      document.querySelector('.theme-moon').style.display = 'block';
     }
+    const cb = document.getElementById('dark-toggle');
+    if (cb) cb.checked = this.state.theme === 'dark';
   },
 
   toggleTheme() {
-    const isDark = this.state.theme === 'dark';
-    this.state.theme = isDark ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', this.state.theme);
-    localStorage.setItem('theme', this.state.theme);
-    document.getElementById('theme-icon').textContent = isDark ? '☀️' : '🌙';
+    this.state.theme = this.state.theme === 'light' ? 'dark' : 'light';
+    localStorage.setItem('qtdeat-theme', this.state.theme);
+    this.applyTheme();
   },
 
-  /* ─── EVENT LISTENERS ─── */
-  setupEventListeners() {
-    // Send message
-    document.getElementById('send-btn').addEventListener('click', () => this.sendMessage());
-    document.getElementById('message-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        this.sendMessage();
+  /* ═══ VIEWS ═══ */
+  showView(name) {
+    // Hide all views
+    ['home', 'chat', 'vouchers', 'settings'].forEach(v => {
+      const el = v === 'home' ? document.getElementById('view-home')
+        : v === 'chat' ? document.getElementById('view-chat')
+        : v === 'vouchers' ? document.getElementById('view-vouchers')
+        : document.getElementById('view-settings');
+      if (el) {
+        if (v === 'home') el.style.display = v === name ? '' : 'none';
+        else el.classList.toggle('active', v === name);
       }
     });
+    // Results view
+    document.getElementById('view-results').classList.remove('active');
 
-    // New chat
-    document.getElementById('new-chat-btn').addEventListener('click', () => this.newChat());
+    this.state.view = name;
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const navMap = { home: 0, chat: 1, vouchers: 2, settings: 3 };
+    const items = document.querySelectorAll('.nav-item');
+    if (items[navMap[name]]) items[navMap[name]].classList.add('active');
 
-    // Theme toggle
-    document.getElementById('theme-toggle').addEventListener('click', () => this.toggleTheme());
+    this.closeSidebar();
+  },
 
-    // Sidebar nav
-    document.querySelectorAll('.nav-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const action = item.dataset.action;
-        if (action === 'new-chat') this.newChat();
-        else if (action === 'vouchers') this.showCoupons();
-        else if (action === 'deals') this.showDealFinder();
-        else if (action === 'settings') this.showSettings();
+  /* ═══ SIDEBAR ═══ */
+  closeSidebar() {
+    if (window.innerWidth <= 768) {
+      this.state.sidebarOpen = false;
+      document.querySelector('.sidebar').classList.remove('open');
+    }
+  },
 
-        // Highlight active
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        item.classList.add('active');
+  /* ═══ SEARCH ═══ */
+  async doSearch(query) {
+    if (!query.trim()) return;
+
+    document.getElementById('view-home').style.display = 'none';
+    const rv = document.getElementById('view-results');
+    rv.classList.add('active');
+    document.getElementById('results-query').textContent = `🔍 ${query}`;
+    document.getElementById('results-meta').textContent = 'Đang tìm kiếm...';
+    document.getElementById('search-result-ai').innerHTML = '<div class="typing-dots"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>';
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `Tìm deal tốt nhất cho sản phẩm: ${query}. Phân tích giá thị trường, tìm voucher, mã giảm giá, freeship, flash sale. Tính giá cuối cùng sau tất cả ưu đãi. Trình bày dạng bảng so sánh.` })
+      });
+      const data = await res.json();
+
+      document.getElementById('results-meta').textContent = '✨ AI đã phân tích xong';
+      if (data.success) {
+        const html = marked.parse(data.answer);
+        document.getElementById('search-result-ai').innerHTML = `<div class="result-content">${html}</div>`;
+        // Highlight code
+        document.querySelectorAll('#search-result-ai pre code').forEach(b => hljs.highlightElement(b));
+      } else {
+        document.getElementById('search-result-ai').innerHTML = `<div class="result-content" style="color:var(--text-tertiary)">${data.error}</div>`;
+      }
+    } catch(err) {
+      document.getElementById('results-meta').textContent = '❌ Lỗi kết nối';
+      document.getElementById('search-result-ai').innerHTML = '<div class="result-content" style="color:#ef4444;">Lỗi kết nối đến server. Vui lòng thử lại.</div>';
+    }
+
+    document.getElementById('search-input').blur();
+  },
+
+  /* ═══ CHAT ═══ */
+  async sendChat() {
+    const input = document.getElementById('chat-input');
+    const msg = input.value.trim();
+    if (!msg || this.state.isStreaming) return;
+
+    input.value = '';
+    input.style.height = 'auto';
+    this.state.isStreaming = true;
+    document.getElementById('chat-send').disabled = true;
+
+    // Add user msg
+    this.addMsg('user', msg);
+
+    // Show typing
+    const container = document.getElementById('chat-msgs-inner');
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'typing';
+    typingDiv.id = 'typing-el';
+    typingDiv.innerHTML = '<div class="msg-avatar" style="background:var(--bg-muted);color:var(--text-primary);font-size:12px;">AI</div><div class="typing-dots"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>';
+    container.appendChild(typingDiv);
+    this.scrollChat();
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, chat_id: this.state.currentChatId })
+      });
+      const data = await res.json();
+
+      document.getElementById('typing-el')?.remove();
+
+      if (data.success) {
+        this.state.currentChatId = data.chat_id;
+        this.addMsg('assistant', data.answer);
+        this.loadChats();
+      } else {
+        this.toast(data.error || 'Lỗi xử lý', 'error');
+      }
+    } catch(err) {
+      document.getElementById('typing-el')?.remove();
+      this.toast('Lỗi kết nối', 'error');
+    }
+
+    this.state.isStreaming = false;
+    document.getElementById('chat-send').disabled = false;
+    input.focus();
+  },
+
+  addMsg(role, content) {
+    const container = document.getElementById('chat-msgs-inner');
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+    const avatar = role === 'user' ? '👤' : '🤖';
+    const html = marked.parse(content);
+    div.innerHTML = `<div class="msg-avatar">${avatar}</div><div class="msg-body">${html}</div>`;
+    container.appendChild(div);
+    this.scrollChat();
+    // Highlight code
+    div.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+  },
+
+  scrollChat() {
+    requestAnimationFrame(() => {
+      document.getElementById('chat-messages').scrollTop = 999999;
+    });
+  },
+
+  /* ═══ CHAT HISTORY ═══ */
+  async loadChats() {
+    try {
+      const res = await fetch('/api/chats');
+      const data = await res.json();
+      if (data.success) this.state.chats = data.chats;
+      this.renderChats();
+    } catch(e) { /* silent */ }
+  },
+
+  renderChats() {
+    const list = document.getElementById('chat-list');
+    if (!list) return;
+    if (!this.state.chats.length) {
+      list.innerHTML = '<div class="chat-list-empty"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chưa có lịch sử</span></div>';
+      return;
+    }
+    list.innerHTML = this.state.chats.map(c => `
+      <button class="chat-item ${c.id === this.state.currentChatId ? 'active' : ''}" data-id="${c.id}">
+        <span class="chat-title">${this.esc(c.title)}</span>
+        <span class="chat-del" data-id="${c.id}" onclick="event.stopPropagation();App.delChat('${c.id}')">✕</span>
+      </button>
+    `).join('');
+    list.querySelectorAll('.chat-item:not(.chat-del)').forEach(el => {
+      el.addEventListener('click', () => this.loadChat(el.dataset.id));
+    });
+  },
+
+  async loadChat(id) {
+    try {
+      const res = await fetch(`/api/chats/${id}`);
+      const data = await res.json();
+      if (data.success) {
+        this.state.currentChatId = id;
+        const container = document.getElementById('chat-msgs-inner');
+        container.innerHTML = '';
+        data.messages.forEach(m => this.addMsg(m.role, m.content));
+        this.showView('chat');
+        this.renderChats();
+      }
+    } catch(e) { this.toast('Lỗi tải chat', 'error'); }
+  },
+
+  newChat() {
+    this.state.currentChatId = null;
+    const container = document.getElementById('chat-msgs-inner');
+    container.innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--text-tertiary);font-size:14px;">
+      <div style="font-size:40px;margin-bottom:12px;">🤖</div>
+      <div style="font-weight:600;color:var(--text-secondary);margin-bottom:4px;">QTDEAL.AI Chat</div>
+      <div>Tôi là AI chuyên săn deal và tìm mã giảm giá.</div>
+      <div style="margin-top:12px;font-size:13px;">Hãy hỏi tôi bất cứ điều gì về mua sắm!</div>
+    </div>`;
+    this.showView('chat');
+    document.getElementById('chat-input').focus();
+  },
+
+  async delChat(id) {
+    try {
+      await fetch(`/api/chats/${id}`, { method: 'DELETE' });
+      if (this.state.currentChatId === id) this.newChat();
+      else this.loadChats();
+    } catch(e) { this.toast('Lỗi xóa', 'error'); }
+  },
+
+  /* ═══ VOUCHER CENTER ═══ */
+  async loadCoupons() {
+    try {
+      const res = await fetch('/api/coupon/list?active_only=true');
+      const data = await res.json();
+      if (data.success) this.state.coupons = data.coupons;
+      this.renderCoupons('all');
+    } catch(e) { /* silent */ }
+  },
+
+  renderCoupons(platform) {
+    const list = document.getElementById('voucher-list');
+    if (!list) return;
+
+    let filtered = this.state.coupons;
+    if (platform !== 'all') {
+      filtered = filtered.filter(c => c.platform === platform);
+    }
+
+    if (!filtered.length) {
+      list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary);"><div style="font-size:32px;margin-bottom:8px;">🎫</div><div>Chưa có mã giảm giá nào</div></div>';
+      return;
+    }
+
+    list.innerHTML = filtered.map(c => {
+      const icon = c.platform === 'shopee' ? '🛒' : c.platform === 'lazada' ? '🟣' : c.platform === 'tiktok' ? '🎵' : '🔵';
+      const value = c.discount_type === 'percent' ? `-${c.discount_value}%` : `-${Number(c.discount_value).toLocaleString()}₫`;
+      const min = c.min_order > 0 ? `Đơn từ ${Number(c.min_order).toLocaleString()}₫` : '';
+      return `
+        <div class="voucher-card">
+          <div class="voucher-card-left">
+            <div class="voucher-card-icon ${c.platform}">${icon}</div>
+            <div class="voucher-card-info">
+              <div class="voucher-card-code">${this.esc(c.code)}</div>
+              <div class="voucher-card-desc">${this.esc(c.description || min)}</div>
+            </div>
+          </div>
+          <div class="voucher-card-right">
+            <div>
+              <div class="voucher-card-value">${value}</div>
+              <div class="voucher-card-min">${min}</div>
+            </div>
+            <button class="btn-copy" data-code="${this.esc(c.code)}">Sao chép</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    // Copy buttons
+    list.querySelectorAll('.btn-copy').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const code = btn.dataset.code;
+        try {
+          await navigator.clipboard.writeText(code);
+          btn.textContent = '✅ Đã copy';
+          btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = 'Sao chép'; btn.classList.remove('copied'); }, 2000);
+        } catch(e) {
+          // Fallback
+          const ta = document.createElement('textarea');
+          ta.value = code;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+          btn.textContent = '✅ Đã copy';
+          btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = 'Sao chép'; btn.classList.remove('copied'); }, 2000);
+        }
+      });
+    });
+  },
+
+  /* ═══ MODAL ═══ */
+  openModal(title, bodyHTML) {
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-body').innerHTML = bodyHTML;
+    document.getElementById('modal-overlay').classList.add('open');
+  },
+  closeModal() {
+    document.getElementById('modal-overlay').classList.remove('open');
+  },
+
+  /* ═══ TOAST ═══ */
+  toast(msg, type = 'info') {
+    const c = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2800);
+  },
+
+  /* ═══ UTILITY ═══ */
+  esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  },
+
+  /* ═══ EVENTS ═══ */
+  bindEvents() {
+    // Nav items
+    document.querySelectorAll('.nav-item[data-view]').forEach(el => {
+      el.addEventListener('click', () => {
+        const view = el.dataset.view;
+        if (view === 'chat') this.newChat();
+        else this.showView(view);
       });
     });
 
-    // Hamburger menu (mobile)
+    // Hero search
+    document.getElementById('search-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.doSearch(document.getElementById('search-input').value);
+    });
+
+    // Trending chips
+    document.querySelectorAll('.trend-chip').forEach(el => {
+      el.addEventListener('click', () => {
+        document.getElementById('search-input').value = el.dataset.query;
+        this.doSearch(el.dataset.query);
+      });
+    });
+
+    // Chat form
+    document.getElementById('chat-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.sendChat();
+    });
+    document.getElementById('chat-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.sendChat();
+      }
+    });
+
+    // New chat button
+    document.getElementById('new-chat-btn').addEventListener('click', () => this.newChat());
+
+    // Theme
+    document.getElementById('theme-toggle').addEventListener('click', () => this.toggleTheme());
+    const dt = document.getElementById('dark-toggle');
+    if (dt) {
+      dt.addEventListener('change', () => this.toggleTheme());
+    }
+
+    // Hamburger
     document.getElementById('hamburger').addEventListener('click', () => {
       this.state.sidebarOpen = !this.state.sidebarOpen;
       document.querySelector('.sidebar').classList.toggle('open');
     });
 
-    // Click outside to close sidebar (mobile)
-    document.getElementById('main-content').addEventListener('click', () => {
-      if (window.innerWidth <= 768 && this.state.sidebarOpen) {
-        this.state.sidebarOpen = false;
-        document.querySelector('.sidebar').classList.remove('open');
-      }
+    // Close sidebar on content click (mobile)
+    document.querySelector('.main-content').addEventListener('click', () => this.closeSidebar());
+
+    // Modal overlay click
+    document.getElementById('modal-overlay').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) this.closeModal();
     });
 
-    // Suggestion chips
-    document.querySelectorAll('.suggestion-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        const text = chip.textContent.trim();
-        document.getElementById('message-input').value = text;
-        this.sendMessage();
+    // Voucher tabs
+    document.querySelectorAll('.voucher-tab').forEach(el => {
+      el.addEventListener('click', () => {
+        document.querySelectorAll('.voucher-tab').forEach(t => t.classList.remove('active'));
+        el.classList.add('active');
+        this.renderCoupons(el.dataset.platform);
       });
     });
-  },
 
-  setupAutoResize() {
-    const input = document.getElementById('message-input');
-    input.addEventListener('input', () => {
-      input.style.height = 'auto';
-      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    // View all deals
+    document.getElementById('view-all-deals')?.addEventListener('click', () => {
+      this.showView('chat');
     });
   },
 
-  /* ─── CHAT ─── */
-  async sendMessage() {
-    const input = document.getElementById('message-input');
-    const message = input.value.trim();
-    if (!message || this.state.isStreaming) return;
-
-    input.value = '';
-    input.style.height = 'auto';
-    this.state.isStreaming = true;
-    document.getElementById('send-btn').disabled = true;
-
-    // Hide welcome
-    document.getElementById('welcome-screen').classList.add('hidden');
-    document.getElementById('messages-area').classList.remove('hidden');
-
-    // Add user message
-    this.addMessage('user', message);
-
-    // Show typing
-    this.showTyping();
-
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          chat_id: this.state.currentChatId
-        })
-      });
-
-      const data = await response.json();
-      this.hideTyping();
-
-      if (data.success) {
-        this.state.currentChatId = data.chat_id;
-        this.addMessage('assistant', data.answer);
-        this.loadChats(); // Refresh sidebar
-      } else {
-        this.showToast(data.error || 'Lỗi xử lý tin nhắn', 'error');
-      }
-
-    } catch (err) {
-      this.hideTyping();
-      this.showToast('Lỗi kết nối đến server', 'error');
-    }
-
-    this.state.isStreaming = false;
-    document.getElementById('send-btn').disabled = false;
-    input.focus();
-  },
-
-  addMessage(role, content) {
-    const container = document.getElementById('messages-container');
-    const div = document.createElement('div');
-    div.className = `message ${role}`;
-
-    const avatar = role === 'user' ? '👤' : '🤖';
-    // Convert markdown-style formatting to HTML
-    let html = content
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\n/g, '<br>');
-
-    div.innerHTML = `
-      <div class="message-avatar">${avatar}</div>
-      <div class="message-content">${html}</div>
-    `;
-
-    container.appendChild(div);
-    this.scrollToBottom();
-  },
-
-  showTyping() {
-    const container = document.getElementById('messages-container');
-    const div = document.createElement('div');
-    div.className = 'typing-indicator';
-    div.id = 'typing-indicator';
-    div.innerHTML = `
-      <div class="message-avatar">🤖</div>
-      <div class="typing-dots">
-        <span></span><span></span><span></span>
-      </div>
-    `;
-    container.appendChild(div);
-    this.scrollToBottom();
-  },
-
-  hideTyping() {
-    const typing = document.getElementById('typing-indicator');
-    if (typing) typing.remove();
-  },
-
-  scrollToBottom() {
-    const container = document.getElementById('chat-container');
-    setTimeout(() => {
-      container.scrollTop = container.scrollHeight;
-    }, 50);
-  },
-
-  newChat() {
-    this.state.currentChatId = null;
-    document.getElementById('welcome-screen').classList.remove('hidden');
-    document.getElementById('messages-area').classList.add('hidden');
-    document.getElementById('messages-container').innerHTML = '';
-    document.getElementById('message-input').value = '';
-    document.getElementById('message-input').focus();
-
-    // Deselect all chat items
-    document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
-  },
-
-  /* ─── CHAT LIST ─── */
-  async loadChats() {
-    try {
-      const response = await fetch('/api/chats');
-      const data = await response.json();
-      if (data.success) {
-        this.state.chats = data.chats;
-        this.renderChatList();
-      }
-    } catch (err) {
-      console.error('Failed to load chats:', err);
-    }
-  },
-
-  renderChatList() {
-    const list = document.getElementById('chat-list');
-    list.innerHTML = '';
-
-    if (this.state.chats.length === 0) {
-      list.innerHTML = '<div style="padding: 20px; text-align: center; opacity: 0.5; font-size: 13px;">Chưa có cuộc trò chuyện nào</div>';
-      return;
-    }
-
-    this.state.chats.forEach(chat => {
-      const div = document.createElement('div');
-      div.className = `chat-item ${chat.id === this.state.currentChatId ? 'active' : ''}`;
-      div.innerHTML = `
-        <span class="chat-title">${this.escapeHtml(chat.title)}</span>
-        <button class="chat-delete" data-id="${chat.id}">✕</button>
-      `;
-
-      div.querySelector('.chat-title').addEventListener('click', () => this.loadChat(chat.id));
-      div.querySelector('.chat-delete').addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.deleteChat(chat.id);
-      });
-
-      list.appendChild(div);
-    });
-  },
-
-  async loadChat(chatId) {
-    try {
-      const response = await fetch(`/api/chats/${chatId}`);
-      const data = await response.json();
-
-      if (data.success) {
-        this.state.currentChatId = chatId;
-        document.getElementById('welcome-screen').classList.add('hidden');
-        document.getElementById('messages-area').classList.remove('hidden');
-
-        const container = document.getElementById('messages-container');
-        container.innerHTML = '';
-
-        data.messages.forEach(msg => {
-          this.addMessage(msg.role, msg.content);
+  autoResize() {
+    ['chat-input', 'message-input'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('input', () => {
+          el.style.height = 'auto';
+          el.style.height = Math.min(el.scrollHeight, 120) + 'px';
         });
-
-        this.renderChatList();
-        this.scrollToBottom();
-
-        // Close sidebar on mobile
-        if (window.innerWidth <= 768) {
-          this.state.sidebarOpen = false;
-          document.querySelector('.sidebar').classList.remove('open');
-        }
       }
-    } catch (err) {
-      this.showToast('Lỗi tải chat', 'error');
-    }
-  },
-
-  async deleteChat(chatId) {
-    if (!confirm('Xóa cuộc trò chuyện này?')) return;
-
-    try {
-      const response = await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
-      const data = await response.json();
-
-      if (data.success) {
-        if (this.state.currentChatId === chatId) {
-          this.newChat();
-        }
-        this.loadChats();
-        this.showToast('Đã xóa chat', 'success');
-      }
-    } catch (err) {
-      this.showToast('Lỗi xóa chat', 'error');
-    }
-  },
-
-  /* ─── COUPONS ─── */
-  async loadCoupons() {
-    try {
-      const response = await fetch('/api/coupon/list');
-      const data = await response.json();
-      if (data.success) {
-        this.state.coupons = data.coupons;
-        this.renderCoupons();
-      }
-    } catch (err) {
-      console.error('Failed to load coupons:', err);
-    }
-  },
-
-  renderCoupons() {
-    const list = document.getElementById('coupon-list');
-    if (!list) return;
-
-    if (this.state.coupons.length === 0) {
-      list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Chưa có mã giảm giá nào</div>';
-      return;
-    }
-
-    list.innerHTML = this.state.coupons.map(c => `
-      <div class="coupon-card">
-        <div>
-          <div class="coupon-code">${this.escapeHtml(c.code)}</div>
-          <div class="coupon-info">${this.escapeHtml(c.platform)}</div>
-        </div>
-        <div class="coupon-value">
-          ${c.discount_type === 'percent' ? c.discount_value + '%' : c.discount_value.toLocaleString() + '₫'}
-          ${c.min_order > 0 ? `<br><span class="coupon-expired">Đơn từ ${c.min_order.toLocaleString()}₫</span>` : ''}
-        </div>
-      </div>
-    `).join('');
-  },
-
-  showCoupons() {
-    this.loadCoupons();
-    document.getElementById('modal-overlay').classList.add('open');
-    document.getElementById('modal-title').textContent = '🎫 Mã giảm giá';
-    document.getElementById('modal-body').innerHTML = `
-      <div style="margin-bottom: 16px;">
-        <button class="btn btn-primary" onclick="App.showAddCoupon()">+ Thêm mã</button>
-        <button class="btn btn-secondary" onclick="App.optimizeCoupon()">💰 Tối ưu</button>
-      </div>
-      <div id="coupon-list"></div>
-    `;
-    this.renderCoupons();
-  },
-
-  showAddCoupon() {
-    document.getElementById('modal-body').innerHTML = `
-      <div class="form-group">
-        <label>Mã giảm giá</label>
-        <input type="text" id="coupon-code" placeholder="VD: SHOPEE30K" class="input">
-      </div>
-      <div class="form-group">
-        <label>Nền tảng</label>
-        <select id="coupon-platform">
-          <option value="shopee">Shopee</option>
-          <option value="lazada">Lazada</option>
-          <option value="tiki">Tiki</option>
-          <option value="tiktok">TikTok Shop</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Loại giảm giá</label>
-        <select id="coupon-type">
-          <option value="percent">% giảm</option>
-          <option value="fixed">Giảm tiền mặt</option>
-          <option value="shipping">Giảm phí ship</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Giá trị giảm</label>
-        <input type="number" id="coupon-value" placeholder="VD: 10 (nếu %) hoặc 30000 (nếu tiền)" step="1000">
-      </div>
-      <div class="form-group">
-        <label>Đơn tối thiểu (₫) - không bắt buộc</label>
-        <input type="number" id="coupon-min" placeholder="VD: 500000" step="1000">
-      </div>
-      <div class="form-group">
-        <label>Giảm tối đa (₫) - không bắt buộc</label>
-        <input type="number" id="coupon-max" placeholder="VD: 50000">
-      </div>
-      <div class="form-group">
-        <label>Ngày hết hạn (không bắt buộc)</label>
-        <input type="date" id="coupon-expire">
-      </div>
-      <div class="form-actions">
-        <button class="btn btn-secondary" onclick="App.showCoupons()">← Quay lại</button>
-        <button class="btn btn-primary" onclick="App.saveCoupon()">💾 Lưu</button>
-      </div>
-    `;
-  },
-
-  async saveCoupon() {
-    const data = {
-      code: document.getElementById('coupon-code').value.trim(),
-      platform: document.getElementById('coupon-platform').value,
-      discount_type: document.getElementById('coupon-type').value,
-      discount_value: parseFloat(document.getElementById('coupon-value').value) || 0,
-      min_order: parseFloat(document.getElementById('coupon-min').value) || 0,
-      max_discount: document.getElementById('coupon-max').value || null,
-      expire_date: document.getElementById('coupon-expire').value || null,
-    };
-
-    if (!data.code || data.discount_value <= 0) {
-      this.showToast('Vui lòng nhập mã và giá trị giảm giá', 'error');
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/coupon/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      const result = await response.json();
-
-      if (result.success) {
-        this.showToast('✅ Đã thêm mã giảm giá', 'success');
-        this.showCoupons();
-      } else {
-        this.showToast(result.error || 'Lỗi thêm mã', 'error');
-      }
-    } catch (err) {
-      this.showToast('Lỗi kết nối', 'error');
-    }
-  },
-
-  async optimizeCoupon() {
-    document.getElementById('modal-body').innerHTML = `
-      <div class="form-group">
-        <label>Giá trị đơn hàng (₫)</label>
-        <input type="number" id="order-value" placeholder="VD: 800000" step="1000">
-      </div>
-      <div class="form-group">
-        <label>Nền tảng</label>
-        <select id="order-platform">
-          <option value="shopee">Shopee</option>
-          <option value="lazada">Lazada</option>
-          <option value="tiki">Tiki</option>
-          <option value="tiktok">TikTok Shop</option>
-        </select>
-      </div>
-      <div class="form-actions">
-        <button class="btn btn-secondary" onclick="App.showCoupons()">← Quay lại</button>
-        <button class="btn btn-primary" onclick="App.checkOptimize()">🔍 Tìm voucher tốt nhất</button>
-      </div>
-      <div id="optimize-result" class="mt-16"></div>
-    `;
-  },
-
-  async checkOptimize() {
-    const orderValue = parseFloat(document.getElementById('order-value').value);
-    const platform = document.getElementById('order-platform').value;
-
-    if (!orderValue || orderValue <= 0) {
-      this.showToast('Vui lòng nhập giá trị đơn hàng', 'error');
-      return;
-    }
-
-    const resultDiv = document.getElementById('optimize-result');
-    resultDiv.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
-
-    try {
-      const response = await fetch('/api/coupon/optimize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_value: orderValue, platform })
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        if (data.coupon) {
-          resultDiv.innerHTML = `
-            <div style="background: var(--bg-secondary); padding: 16px; border-radius: var(--radius); border: 1px solid var(--border);">
-              <div style="font-size: 18px; font-weight: 700; color: var(--primary); margin-bottom: 8px;">
-                💰 Tiết kiệm: ${data.savings.toLocaleString()}₫
-              </div>
-              <div><strong>Mã:</strong> <span class="coupon-code">${data.coupon.code}</span></div>
-              <div><strong>Giảm:</strong> ${data.coupon.discount_type === 'percent' ? data.coupon.discount_value + '%' : data.coupon.discount_value.toLocaleString() + '₫'}</div>
-              <div><strong>Giá cuối:</strong> ${data.final_price.toLocaleString()}₫</div>
-              <div style="margin-top: 8px; font-size: 13px; color: var(--text-muted);">${data.ai_analysis || ''}</div>
-            </div>
-          `;
-        } else {
-          resultDiv.innerHTML = `<div style="padding: 16px;">${data.analysis || 'Không tìm thấy voucher phù hợp'}</div>`;
-        }
-      } else {
-        resultDiv.innerHTML = `<div style="padding: 16px; color: var(--text-muted);">${data.error}</div>`;
-      }
-    } catch (err) {
-      resultDiv.innerHTML = '<div style="padding: 16px; color: var(--text-muted);">Lỗi kết nối</div>';
-    }
-  },
-
-  /* ─── DEAL FINDER ─── */
-  showDealFinder() {
-    document.getElementById('modal-overlay').classList.add('open');
-    document.getElementById('modal-title').textContent = '🔥 Tìm Deal Siêu Hời';
-    document.getElementById('modal-body').innerHTML = `
-      <div class="form-group">
-        <label>Nhập sản phẩm bạn muốn tìm deal</label>
-        <input type="text" id="deal-query" placeholder="VD: Điện thoại Samsung dưới 5 triệu" class="input">
-      </div>
-      <div class="form-actions">
-        <button class="btn btn-secondary" onclick="App.closeModal()">Đóng</button>
-        <button class="btn btn-primary" onclick="App.findDeal()">🔍 Tìm deal</button>
-      </div>
-      <div id="deal-result" class="mt-16"></div>
-    `;
-    document.getElementById('deal-query').focus();
-  },
-
-  async findDeal() {
-    const query = document.getElementById('deal-query').value.trim();
-    if (!query) {
-      this.showToast('Vui lòng nhập sản phẩm', 'error');
-      return;
-    }
-
-    const resultDiv = document.getElementById('deal-result');
-    resultDiv.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
-
-    try {
-      const response = await fetch('/api/find-deal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        let html = data.result
-          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\n/g, '<br>');
-        resultDiv.innerHTML = `<div style="background: var(--bg-secondary); padding: 16px; border-radius: var(--radius); line-height: 1.6;">${html}</div>`;
-      } else {
-        resultDiv.innerHTML = `<div style="color: var(--text-muted);">${data.error}</div>`;
-      }
-    } catch (err) {
-      resultDiv.innerHTML = '<div style="color: var(--text-muted);">Lỗi kết nối</div>';
-    }
-  },
-
-  /* ─── SETTINGS ─── */
-  showSettings() {
-    document.getElementById('modal-overlay').classList.add('open');
-    document.getElementById('modal-title').textContent = '⚙️ Cài đặt';
-    document.getElementById('modal-body').innerHTML = `
-      <div style="margin-bottom: 16px;">
-        <label style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
-          <span>🌙 Chế độ tối</span>
-          <input type="checkbox" ${this.state.theme === 'dark' ? 'checked' : ''} onchange="App.toggleTheme()" style="width: 18px; height: 18px;">
-        </label>
-      </div>
-      <div style="margin-bottom: 16px; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius);">
-        <div style="font-weight: 600; margin-bottom: 4px;">Về QT_SHOPEE AI</div>
-        <div style="font-size: 13px; color: var(--text-muted);">
-          Phiên bản 1.0<br>
-          Trợ lý săn mã giảm giá & tìm deal thông minh<br>
-          Powered by Google Gemini AI
-        </div>
-      </div>
-      <div class="form-actions">
-        <button class="btn btn-primary" onclick="App.closeModal()">Đóng</button>
-      </div>
-    `;
-  },
-
-  /* ─── MODAL ─── */
-  closeModal() {
-    document.getElementById('modal-overlay').classList.remove('open');
-  },
-
-  /* ─── TOAST ─── */
-  showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.textContent = message;
-    container.appendChild(toast);
-
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateX(100%)';
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
-  },
-
-  /* ─── UTILITY ─── */
-  escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    });
   }
 };
 
-// ─── INIT ───
+// ─── DOM READY ───
 document.addEventListener('DOMContentLoaded', () => App.init());
-
-// Close modal on overlay click
-document.getElementById('modal-overlay').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) App.closeModal();
-});

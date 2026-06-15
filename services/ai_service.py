@@ -67,22 +67,26 @@ class AIService:
         self.client = genai.Client(api_key=self.api_key)
         self.model = "gemini-2.5-flash"
 
+    def _build_contents(self, message: str, history: list = None) -> list:
+        """Build contents array for Gemini API"""
+        contents = []
+        if history:
+            for h in history[-10:]:
+                contents.append({
+                    "role": h["role"],
+                    "parts": [{"text": h["content"]}]
+                })
+
+        contents.append({
+            "role": "user",
+            "parts": [{"text": f"{SYSTEM_PROMPT}\n\nNgười dùng: {message}"}]
+        })
+        return contents
+
     def chat(self, message: str, history: list = None) -> str:
-        """Gửi tin nhắn và nhận phản hồi từ Gemini"""
+        """Gửi tin nhắn và nhận phản hồi từ Gemini (non-streaming)"""
         try:
-            contents = []
-            if history:
-                for h in history[-10:]:  # Chỉ lấy 10 tin nhắn gần nhất
-                    contents.append({
-                        "role": h["role"],
-                        "parts": [{"text": h["content"]}]
-                    })
-
-            contents.append({
-                "role": "user",
-                "parts": [{"text": f"{SYSTEM_PROMPT}\n\nNgười dùng: {message}"}]
-            })
-
+            contents = self._build_contents(message, history)
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=contents,
@@ -92,11 +96,28 @@ class AIService:
                     "max_output_tokens": 2048,
                 }
             )
-
             return response.text
-
         except Exception as e:
             return f"❌ Lỗi AI: {str(e)}\n\nVui lòng thử lại sau."
+
+    def chat_stream(self, message: str, history: list = None):
+        """Gửi tin nhắn và nhận phản hồi dạng stream từ Gemini"""
+        try:
+            contents = self._build_contents(message, history)
+            response = self.client.models.generate_content_stream(
+                model=self.model,
+                contents=contents,
+                config={
+                    "temperature": 0.7,
+                    "top_p": 0.9,
+                    "max_output_tokens": 2048,
+                }
+            )
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+        except Exception as e:
+            yield f"❌ Lỗi AI: {str(e)}"
 
     def find_deal(self, query: str) -> str:
         """Tìm deal siêu hời cho sản phẩm"""

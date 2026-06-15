@@ -4,11 +4,11 @@ QT_SHOPEE AI - Main Flask Application
 import os
 import json
 from datetime import datetime, timezone
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, Response
 from dotenv import load_dotenv
 
 from database import init_db
-from models import db, User, Chat, Message, Coupon, Deal, SearchHistory
+from models import db, User, Chat, Message, Coupon, Deal, SearchHistory, Favorite
 from services.ai_service import ai_service
 from services.coupon_service import coupon_service
 from services.search_service import search_service
@@ -112,6 +112,63 @@ def chat():
             "success": False,
             "error": f"Lỗi xử lý: {str(e)}"
         })
+
+
+@app.route('/api/chat/stream', methods=['POST'])
+def chat_stream():
+    """Chat với AI - Streaming response via SSE"""
+    user_id = get_or_create_user()
+    data = request.get_json()
+    message = data.get('message', '').strip()
+    chat_id = data.get('chat_id')
+
+    if not message:
+        return jsonify({"success": False, "error": "Vui lòng nhập tin nhắn"})
+
+    # Tạo hoặc lấy chat
+    if chat_id:
+        chat = Chat.query.get(chat_id)
+        if not chat:
+            return jsonify({"success": False, "error": "Chat không tồn tại"})
+    else:
+        title = message[:50] + ('...' if len(message) > 50 else '')
+        chat = Chat(user_id=user_id, title=title)
+        db.session.add(chat)
+        db.session.commit()
+
+    # Lưu tin nhắn user
+    user_msg = Message(chat_id=chat.id, role='user', content=message)
+    db.session.add(user_msg)
+    db.session.commit()
+
+    def generate():
+        full_response = ""
+        try:
+            history = get_chat_history(chat.id)[-10:-1]
+            for chunk in ai_service.chat_stream(message, history):
+                full_response += chunk
+                yield f"data: {json.dumps({'chat_id': chat.id, 'chunk': chunk})}\n\n"
+
+            # Lưu tin nhắn AI
+            with app.app_context():
+                ai_msg = Message(chat_id=chat.id, role='assistant', content=full_response)
+                db.session.add(ai_msg)
+                db.session.commit()
+                log_search(user_id, message, full_response)
+
+            yield f"data: {json.dumps({'done': True, 'chat_id': chat.id})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+        }
+    )
 
 
 @app.route('/api/find-deal', methods=['POST'])
@@ -323,6 +380,50 @@ def parse_coupon_text():
 
     parsed = coupon_service.parse_coupon_input(text)
     return jsonify({"success": True, "parsed": parsed})
+
+
+@app.route('/api/favorites', methods=['GET'])
+def list_favorites():
+    user_id = get_or_create_user()
+    favs = Favorite.query.filter_by(user_id=user_id).order_by(Favorite.created_at.desc()).all()
+    return jsonify({"success": True, "favorites": [{
+        "id": f.id,
+        "product_name": f.product_name,
+        "product_url": f.product_url,
+        "image_url": f.image_url,
+        "price": f.price,
+        "platform": f.platform,
+        "note": f.note,
+        "created_at": f.created_at.isoformat()
+    } for f in favs]})
+
+
+@app.route('/api/favorites/add', methods=['POST'])
+def add_favorite():
+    user_id = get_or_create_user()
+    data = request.get_json()
+    fav = Favorite(
+        user_id=user_id,
+        product_name=data.get('product_name', 'Unknown'),
+        product_url=data.get('product_url'),
+        image_url=data.get('image_url'),
+        price=data.get('price'),
+        platform=data.get('platform'),
+        note=data.get('note')
+    )
+    db.session.add(fav)
+    db.session.commit()
+    return jsonify({"success": True, "id": fav.id})
+
+
+@app.route('/api/favorites/<fav_id>', methods=['DELETE'])
+def delete_favorite(fav_id):
+    fav = Favorite.query.get(fav_id)
+    if not fav:
+        return jsonify({"success": False, "error": "Not found"})
+    db.session.delete(fav)
+    db.session.commit()
+    return jsonify({"success": True})
 
 
 # ───────────────────────────── MAIN ─────────────────────────────

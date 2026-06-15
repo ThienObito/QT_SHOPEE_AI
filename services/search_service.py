@@ -92,7 +92,7 @@ class SearchService:
 
     def extract_price_range(self, query: str) -> dict:
         """Trích xuất khoảng giá từ câu hỏi"""
-        price_info = {"min": 0, "max": float('inf')}
+        price_info = {"min": 0, "max": None}
 
         # Patterns: dưới X triệu, trên X triệu, từ X đến Y, khoảng X
         patterns = [
