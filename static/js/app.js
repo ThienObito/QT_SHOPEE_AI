@@ -140,7 +140,7 @@ const App = {
               </div>
               <span style="font-size:11px;font-weight:600;color:${score >= 70 ? '#16a34a' : score >= 50 ? '#f97316' : '#ef4444'}">Deal ${score}</span>
             </div>
-            ${p.url ? `<a href="${this.esc(p.url)}" target="_blank" style="display:block;text-align:center;margin-top:10px;padding:8px;background:var(--orange-500);color:white;border-radius:var(--radius-sm);font-weight:600;font-size:13px;">🔗 Mua ngay trên Shopee</a>` : ''}
+            ${p.url ? `<a href="${this.esc(p.url)}" target="_blank" style="display:block;text-align:center;margin-top:10px;padding:8px;background:var(--orange-500);color:white;border-radius:var(--radius-sm);font-weight:600;font-size:13px;text-decoration:none;">${p.has_real_link ? '🛒 Mua ngay trên Shopee' : '🔍 Xem trên Shopee'}</a>` : ''}
           `;
           if (grid) grid.appendChild(card);
         });
